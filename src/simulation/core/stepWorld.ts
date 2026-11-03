@@ -169,6 +169,13 @@ export function stepWorld(
     moveHerbivore(animal, plants, config, random, plantGrid),
   );
 
+  const herbivoreGrid = createSpatialGrid(
+  herbivores,
+  config.width,
+  config.height,
+  12,
+  );
+
   const predators = state.predators.map((animal) =>
     moveAnimal(animal, config, random),
   );
@@ -190,18 +197,29 @@ export function stepWorld(
     let nearestIndex = -1;
     let nearestDistance = PREDATOR_HUNT_RADIUS ** 2;
 
-    for (let i = 0; i < herbivores.length; i += 1) {
-        const prey = herbivores[i];
-        
-        if (!prey || consumedHerbivores.has(i)) continue;
-        
-        const distance = distanceSquared(predator, prey, config.width, config.height);
 
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestIndex = i;
-      }
-    }
+const nearbyPreyIndexes = querySpatialGrid(
+  herbivoreGrid,
+  predator.x,
+  predator.y,
+  PREDATOR_HUNT_RADIUS,
+).sort((a, b) => a - b);
+
+for (const i of nearbyPreyIndexes) {
+  const prey = herbivores[i];
+
+  if (!prey || consumedHerbivores.has(i)) {
+    continue;
+  }
+
+  const distance = distanceSquared(predator, prey, config.width, config.height);
+
+  if (distance < nearestDistance) {
+    nearestDistance = distance;
+    nearestIndex = i;
+  }
+}
+
 
       let successfullyHunted = false;
 
