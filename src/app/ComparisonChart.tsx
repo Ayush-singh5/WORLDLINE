@@ -29,8 +29,8 @@ export function ComparisonChart({
 
   const data = useMemo(() => {
     const start = experiment.forkTick;
-    const baselineTick = baseline.state.tick;
-    const experimentTick = experiment.state.tick;
+    const baselineTick = baseline.currentTick;
+    const experimentTick = experiment.currentTick;
     const end = Math.min(baselineTick, experimentTick);
 
     if (end < start) {
@@ -49,20 +49,23 @@ export function ComparisonChart({
       ticks.push(end);
     }
 
-    console.log('WORLDLINE comparison data:', ticks);
+    return ticks.flatMap((tick) => {
+      const baselineMetrics = baseline.getMetricsAt(tick);
+      const experimentMetrics = experiment.getMetricsAt(tick);
 
-    return ticks.map((tick) => ({
-      tick,
-      baseline: baseline.restoreAt(tick).metrics[metric],
-      experiment: experiment.restoreAt(tick).metrics[metric],
-    }));
-  }, [
-    baseline,
-    experiment,
-    metric,
-    baseline.state.tick,
-    experiment.state.tick,
-  ]);
+      if (!baselineMetrics || !experimentMetrics) {
+        return [];
+      }
+
+      return [
+        {
+          tick,
+          baseline: baselineMetrics[metric],
+          experiment: experimentMetrics[metric],
+        },
+      ];
+    });
+  }, [baseline, experiment, metric, baseline.currentTick, experiment.currentTick]);
   if (experiment.parentId === null) {
     return (
       <section className="comparison-card">
@@ -101,15 +104,13 @@ export function ComparisonChart({
       .join(' ');
 
   const comparisonTick = Math.min(
-  baseline.state.tick,
-  experiment.state.tick,
+  baseline.currentTick,
+  experiment.currentTick,
 );
 
-  const baselineValue =
-    baseline.restoreAt(comparisonTick).metrics[metric];
+const baselineValue = baseline.getMetricsAt(comparisonTick)?.[metric] ?? 0;
 
-  const experimentValue =
-    experiment.restoreAt(comparisonTick).metrics[metric];
+const experimentValue = experiment.getMetricsAt(comparisonTick)?.[metric] ?? 0;
 
   const comparison = compareMetric(
     baselineValue,

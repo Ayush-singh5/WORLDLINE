@@ -5,7 +5,7 @@ export interface GridPosition {
 }
 
 export interface SpatialGrid {
-  cells: Map<string, number[]>;
+  cells: Map<number, number[]>;
   columns: number;
   rows: number;
   cellSize: number;
@@ -13,16 +13,16 @@ export interface SpatialGrid {
   height: number;
 }
 
-/** Wrap a coordinate into the world boundaries. */
 function wrap(value: number, size: number): number {
   return ((value % size) + size) % size;
 }
 
-function cellKey(column: number, row: number): string {
-  return `${column},${row}`;
+/** Numeric cell key avoids repeated string creation. */
+function cellKey(column: number, row: number, columns: number): number {
+  return row * columns + column;
 }
 
-/** Build a grid containing the indexes of entities in each cell. */
+/** Build a grid containing entity indexes. */
 export function createSpatialGrid(
   entities: readonly GridPosition[],
   width: number,
@@ -37,23 +37,25 @@ export function createSpatialGrid(
     !Number.isFinite(height) ||
     !Number.isFinite(cellSize)
   ) {
-    throw new Error('Grid dimensions and cell size must be positive and finite.');
+    throw new Error(
+      'Grid dimensions and cell size must be positive and finite.',
+    );
   }
 
   const columns = Math.ceil(width / cellSize);
   const rows = Math.ceil(height / cellSize);
-  const cells = new Map<string, number[]>();
+  const cells = new Map<number, number[]>();
 
   for (let i = 0; i < entities.length; i += 1) {
     const entity = entities[i];
-
     if (!entity) continue;
 
     const x = wrap(entity.x, width);
     const y = wrap(entity.y, height);
+
     const column = Math.floor(x / cellSize);
     const row = Math.floor(y / cellSize);
-    const key = cellKey(column, row);
+    const key = cellKey(column, row, columns);
 
     const bucket = cells.get(key);
 
@@ -67,7 +69,7 @@ export function createSpatialGrid(
   return { cells, columns, rows, cellSize, width, height };
 }
 
-/** Return nearby entity indexes, including cells across world edges. */
+/** Return nearby entity indexes, including wrapped world edges. */
 export function querySpatialGrid(
   grid: SpatialGrid,
   x: number,
@@ -80,25 +82,39 @@ export function querySpatialGrid(
 
   const centerX = Math.floor(wrap(x, grid.width) / grid.cellSize);
   const centerY = Math.floor(wrap(y, grid.height) / grid.cellSize);
-  const range = Math.ceil(radius / grid.cellSize) + 1;
-  const found = new Set<number>();
 
-  for (let dy = -range; dy <= range; dy += 1) {
-    for (let dx = -range; dx <= range; dx += 1) {
-      const column =
-        ((centerX + dx) % grid.columns + grid.columns) % grid.columns;
-      const row =
-        ((centerY + dy) % grid.rows + grid.rows) % grid.rows;
+  const range = Math.ceil(radius / grid.cellSize);
 
-      const bucket = grid.cells.get(cellKey(column, row));
+  // Visit each grid column and row at most once.
+  const columnCount = Math.min(grid.columns, range * 2 + 1);
+  const rowCount = Math.min(grid.rows, range * 2 + 1);
+
+  const startColumn =
+    ((centerX - range) % grid.columns + grid.columns) % grid.columns;
+
+  const startRow =
+    ((centerY - range) % grid.rows + grid.rows) % grid.rows;
+
+  const found: number[] = [];
+
+  for (let rowOffset = 0; rowOffset < rowCount; rowOffset += 1) {
+    const row = (startRow + rowOffset) % grid.rows;
+
+    for (
+      let columnOffset = 0;
+      columnOffset < columnCount;
+      columnOffset += 1
+    ) {
+      const column = (startColumn + columnOffset) % grid.columns;
+      const bucket = grid.cells.get(cellKey(column, row, grid.columns));
 
       if (!bucket) continue;
 
-      for (const index of bucket) {
-        found.add(index);
+      for (let i = 0; i < bucket.length; i += 1) {
+        found.push(bucket[i]!);
       }
     }
   }
 
-  return [...found];
+  return found;
 }

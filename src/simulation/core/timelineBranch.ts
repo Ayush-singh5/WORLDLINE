@@ -2,7 +2,7 @@
 import { stepWorld } from './stepWorld';
 import { assertValidConfig } from '../validation/validateConfig';
 import { TimelineHistory } from './timelineHistory';
-import type { SimulationConfig, WorldState } from './types';
+import type { SimulationConfig, WorldMetrics, WorldState } from './types';
 
 export class TimelineBranch {
   readonly id: string;
@@ -69,9 +69,7 @@ export class TimelineBranch {
   /** Restore a tick that belongs to this branch's recorded history. */
   restoreAt(tick: number): WorldState {
     if (tick < this.forkTick || tick > this.currentState.tick) {
-      throw new RangeError(
-        'Requested tick must be within this branch history.',
-      );
+      throw new RangeError('Requested tick must be within this branch history.');
     }
 
     return this.history.restoreAt(tick);
@@ -84,9 +82,7 @@ export class TimelineBranch {
     configOverrides: Partial<SimulationConfig> = {},
   ): TimelineBranch {
     if (tick < this.forkTick || tick > this.currentState.tick) {
-      throw new RangeError(
-        'Fork tick must be within this branch history.',
-      );
+      throw new RangeError('Fork tick must be within this branch history.');
     }
 
     const forkState = this.restoreAt(tick);
@@ -95,13 +91,21 @@ export class TimelineBranch {
       ...configOverrides,
     };
 
-    return new TimelineBranch(
-      childId,
-      this.id,
-      tick,
-      forkState,
-      childConfig,
-    );
+    return new TimelineBranch(childId, this.id, tick, forkState, childConfig);
+  }
+
+  /** Read the current tick without cloning the complete world. */
+  get currentTick(): number {
+    return this.currentState.tick;
+  }
+
+  /** Retrieve historical metrics without restoring a complete world. */
+  getMetricsAt(tick: number): WorldMetrics | undefined {
+    if (tick < this.forkTick || tick > this.currentState.tick) {
+      return undefined;
+    }
+
+    return this.history.getMetricsAt(tick);
   }
 }
 

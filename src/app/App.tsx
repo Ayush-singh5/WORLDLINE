@@ -53,7 +53,7 @@ export function App() {
   const nextBranchNumber = useRef(1);
 
   const activeBranch = branchMap.current.get(activeBranchId) ?? rootBranch;
-  const latestTick = activeBranch.state.tick;
+  const latestTick = activeBranch.currentTick;
   const activeInfo = branches.find((branch) => branch.id === activeBranchId);
   const branchStartTick = activeInfo?.forkTick ?? 0;
   const viewingPast = selectedTick < latestTick;
@@ -89,10 +89,12 @@ export function App() {
     const branch = branchMap.current.get(id);
     if (!branch) return;
 
+    const branchState = branch.state;
+
     setPlaying(false);
     setActiveBranchId(id);
-    setSelectedTick(branch.state.tick);
-    setWorld(branch.state);
+    setSelectedTick(branchState.tick);
+    setWorld(branchState);
     setGrowthRate(branch.config.plantGrowthRate);
   }
 
@@ -361,7 +363,7 @@ export function App() {
                     </small>
                   </span>
                   <span className="branch-tick">
-                    T{branchObject?.state.tick ?? 0}
+                    T{branchObject?.currentTick ?? 0}
                   </span>
                   {isActive && <span className="branch-active">ACTIVE</span>}
                 </button>

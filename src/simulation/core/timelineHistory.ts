@@ -1,5 +1,6 @@
 
-import type { SimulationConfig, WorldState } from './types';
+import type { SimulationConfig, WorldMetrics, WorldState } from './types';
+
 import { advanceWorld } from './advanceWorld';
 import {
   createCheckpoint,
@@ -9,25 +10,25 @@ import {
 
 export class TimelineHistory {
   private readonly checkpoints: WorldCheckpoint[] = [];
+  private readonly metricsHistory = new Map<number, WorldMetrics>();
 
   constructor(
     initialState: WorldState,
     private readonly config: SimulationConfig,
     private readonly checkpointInterval = 50,
   ) {
-    if (
-      !Number.isSafeInteger(checkpointInterval) ||
-      checkpointInterval < 1
-    ) {
+    if (!Number.isSafeInteger(checkpointInterval) || checkpointInterval < 1) {
       throw new RangeError('checkpointInterval must be a positive integer.');
     }
 
     this.checkpoints.push(createCheckpoint(initialState));
+    this.metricsHistory.set(initialState.tick, { ...initialState.metrics });
   }
 
   /** Save periodic checkpoints as the simulation progresses. */
   record(state: WorldState): void {
     const latest = this.checkpoints[this.checkpoints.length - 1];
+    this.metricsHistory.set(state.tick, { ...state.metrics });
 
     if (!latest) {
       throw new Error('Timeline has no initial checkpoint.');
@@ -80,5 +81,12 @@ export class TimelineHistory {
   /** Return the ticks currently stored as checkpoints. */
   getCheckpointTicks(): number[] {
     return this.checkpoints.map((checkpoint) => checkpoint.tick);
+  }
+
+  /** Retrieve recorded metrics without reconstructing the world. */
+  getMetricsAt(tick: number): WorldMetrics | undefined {
+    const metrics = this.metricsHistory.get(tick);
+
+    return metrics ? { ...metrics } : undefined;
   }
 }
