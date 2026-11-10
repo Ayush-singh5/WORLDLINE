@@ -75,6 +75,7 @@ export function createWorld(config: SimulationConfig): WorldState {
     rainfall: 0.5,
     water: 500,
     nutrients: 500,
+    organicMatter: 0,
   };
 
   const metrics: WorldMetrics = {

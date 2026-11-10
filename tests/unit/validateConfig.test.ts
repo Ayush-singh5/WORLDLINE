@@ -35,4 +35,46 @@ describe('validateConfig', () => {
       /height: Must be a finite number greater than zero/,
     );
   });
+
+
+it('accepts valid decomposition and nutrient return rates', () => {
+  const config = {
+    ...DEFAULT_SIMULATION_CONFIG,
+    decompositionRate: 0.01,
+    nutrientReturnRate: 0.7,
+  };
+
+  expect(validateConfig(config).valid).toBe(true);
+});
+
+it('rejects decomposition rates outside the range 0 to 1', () => {
+  const negativeConfig = {
+    ...DEFAULT_SIMULATION_CONFIG,
+    decompositionRate: -0.1,
+  };
+
+  const excessiveConfig = {
+    ...DEFAULT_SIMULATION_CONFIG,
+    decompositionRate: 1.5,
+  };
+
+  expect(validateConfig(negativeConfig).valid).toBe(false);
+  expect(validateConfig(excessiveConfig).valid).toBe(false);
+});
+
+it('rejects nutrient return rates outside the range 0 to 1', () => {
+  const negativeConfig = {
+    ...DEFAULT_SIMULATION_CONFIG,
+    nutrientReturnRate: -0.1,
+  };
+
+  const excessiveConfig = {
+    ...DEFAULT_SIMULATION_CONFIG,
+    nutrientReturnRate: 1.5,
+  };
+
+  expect(validateConfig(negativeConfig).valid).toBe(false);
+  expect(validateConfig(excessiveConfig).valid).toBe(false);
+});
+
 });

@@ -20,6 +20,24 @@ export interface SimulationConfig {
   predatorStarvationRate: number;
   predatorReproductionThreshold: number;
   reproductionThreshold: number;
+  // Environmental simulation
+  seasonLengthTicks: number;
+  baseTemperature: number;
+  temperatureVariation: number;
+  baseRainfall: number;
+  rainfallVariation: number;
+  evaporationRate: number;
+  nutrientRegenerationRate: number;
+  /** Water consumed per unit of new plant biomass. */
+  plantWaterConsumptionRate: number;
+
+  /** Nutrients consumed per unit of new plant biomass. */
+  plantNutrientConsumptionRate: number;
+  /** Fraction of organic matter decomposed per tick. */
+  decompositionRate: number;
+
+  /** Fraction of decomposed biomass returned as nutrients. */
+  nutrientReturnRate: number;
 }
 
 export interface EnvironmentState {
@@ -27,6 +45,8 @@ export interface EnvironmentState {
   rainfall: number;
   water: number;
   nutrients: number;
+  /** Accumulated dead organic matter awaiting decomposition. */
+  organicMatter: number;
 }
 
 export interface PlantState {

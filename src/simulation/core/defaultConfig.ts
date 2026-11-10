@@ -18,4 +18,18 @@ export const DEFAULT_SIMULATION_CONFIG: Readonly<SimulationConfig> = {
   predatorStarvationRate: 0.3,
   reproductionThreshold: 20,
   predatorReproductionThreshold: 50,
+    // Environmental simulation
+  seasonLengthTicks: 500,
+  baseTemperature: 20,
+  temperatureVariation: 10,
+  baseRainfall: 0.5,
+  rainfallVariation: 0.35,
+  evaporationRate: 0.01,
+  nutrientRegenerationRate: 0.005,
+    // Plant resource consumption
+  plantWaterConsumptionRate: 0.001,
+  plantNutrientConsumptionRate: 0.0001,
+  // Decomposition and nutrient recycling
+  decompositionRate: 0.01,
+  nutrientReturnRate: 0.7,
 };

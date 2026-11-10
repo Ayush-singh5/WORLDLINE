@@ -1,5 +1,17 @@
 
 import { createSeededRandom } from '../rng/seededRandom';
+import { calculatePlantStress } from './calculatePlantStress';
+import { decomposeOrganicMatter } from './decomposeOrganicMatter';
+import {
+  calculateEnvironmentalConditions,
+  applyEnvironmentalEvent,
+} from './environmentalModel';
+
+import { getEnvironmentalEvent } from './environmentalEvents';
+import { updateEnvironment } from './updateEnvironment';
+import { calculatePlantGrowth } from './calculatePlantGrowth';
+import { consumePlantResources } from './consumePlantResources';
+
 import type {
   AnimalState,
   PlantState,
@@ -145,40 +157,66 @@ function reproduce(
 }
 
 /** Advance a world by exactly one deterministic logical tick. */
-export function stepWorld(
-  state: WorldState,
-  config: SimulationConfig,
-): WorldState {
+export function stepWorld(state: WorldState, config: SimulationConfig): WorldState {
   const random = createSeededRandom(state.rngState);
   let nextEntityId = state.nextEntityId;
 
-  const plants: PlantState[] = state.plants.map((plant) => ({
-    ...plant,
-    biomass: Math.min(
-      config.maxPlantBiomass,
-      plant.biomass + config.plantGrowthRate * plant.health,
-    ),
-  }));
+  // Update plant health, growth, and mortality.
+const plantUpdates = state.plants.map((plant) => {
+  // Remove plants that were already dead.
+  if (plant.health <= 0) {
+    return {
+      plant: null,
+      biomassGained: 0,
+      deadBiomass: Math.max(0, plant.biomass),
+    };
+  }
 
-  
+  const updatedPlant = calculatePlantStress(plant, state.environment, config);
+
+  // Transfer the remaining biomass of newly dead plants.
+  if (updatedPlant.health <= 0) {
+    return {
+      plant: null,
+      biomassGained: 0,
+      deadBiomass: Math.max(0, plant.biomass),
+    };
+  }
+
+  const grownPlant = calculatePlantGrowth(updatedPlant, state.environment, config);
+
+  return {
+    plant: grownPlant,
+    biomassGained: Math.max(0, grownPlant.biomass - plant.biomass),
+    deadBiomass: 0,
+  };
+});
+
+const plants: PlantState[] = plantUpdates.flatMap((update) =>
+  update.plant ? [update.plant] : [],
+);
+
+const totalBiomassGained = plantUpdates.reduce(
+  (total, update) => total + update.biomassGained,
+  0,
+);
+
+const deadBiomass = plantUpdates.reduce(
+  (total, update) => total + update.deadBiomass,
+  0,
+);
+
+
+
   const plantGrid = createSpatialGrid(plants, config.width, config.height, 12);
-
-
 
   const herbivores = state.herbivores.map((animal) =>
     moveHerbivore(animal, plants, config, random, plantGrid),
   );
 
-  const herbivoreGrid = createSpatialGrid(
-  herbivores,
-  config.width,
-  config.height,
-  12,
-  );
+  const herbivoreGrid = createSpatialGrid(herbivores, config.width, config.height, 12);
 
-  const predators = state.predators.map((animal) =>
-    moveAnimal(animal, config, random),
-  );
+  const predators = state.predators.map((animal) => moveAnimal(animal, config, random));
 
   const survivingHerbivores: typeof herbivores = [];
   const survivingPredators: typeof predators = [];
@@ -197,50 +235,48 @@ export function stepWorld(
     let nearestIndex = -1;
     let nearestDistance = PREDATOR_HUNT_RADIUS ** 2;
 
+    const nearbyPreyIndexes = querySpatialGrid(
+      herbivoreGrid,
+      predator.x,
+      predator.y,
+      PREDATOR_HUNT_RADIUS,
+    ).sort((a, b) => a - b);
 
-const nearbyPreyIndexes = querySpatialGrid(
-  herbivoreGrid,
-  predator.x,
-  predator.y,
-  PREDATOR_HUNT_RADIUS,
-).sort((a, b) => a - b);
+    for (const i of nearbyPreyIndexes) {
+      const prey = herbivores[i];
 
-for (const i of nearbyPreyIndexes) {
-  const prey = herbivores[i];
+      if (!prey || consumedHerbivores.has(i)) {
+        continue;
+      }
 
-  if (!prey || consumedHerbivores.has(i)) {
-    continue;
-  }
+      const distance = distanceSquared(predator, prey, config.width, config.height);
 
-  const distance = distanceSquared(predator, prey, config.width, config.height);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = i;
+      }
+    }
 
-  if (distance < nearestDistance) {
-    nearestDistance = distance;
-    nearestIndex = i;
-  }
-}
+    let successfullyHunted = false;
 
+    if (nearestIndex !== -1) {
+      const prey = herbivores[nearestIndex];
 
-      let successfullyHunted = false;
+      if (prey) {
+        consumedHerbivores.add(nearestIndex);
+        predatorsThatHunted.add(predator.id);
+        successfullyHunted = true;
 
-if (nearestIndex !== -1) {
-  const prey = herbivores[nearestIndex];
+        const energyGained = Math.min(5, prey.energy * 0.25);
+        predator.energy += Math.max(0, energyGained);
+      }
+    }
 
-  if (prey) {
-    consumedHerbivores.add(nearestIndex);
-    predatorsThatHunted.add(predator.id);
-    successfullyHunted = true;
+    predator.energy -= config.predatorMetabolism;
 
-    const energyGained = Math.min(5, prey.energy * 0.25);
-    predator.energy += Math.max(0, energyGained);
-  }
-}
-
-predator.energy -= config.predatorMetabolism;
-
-if (!successfullyHunted) {
-  predator.energy -= config.predatorStarvationRate;
-}
+    if (!successfullyHunted) {
+      predator.energy -= config.predatorStarvationRate;
+    }
 
     if (predator.energy > 0 && predator.ageTicks < MAX_AGE_TICKS) {
       survivingPredators.push(predator);
@@ -263,51 +299,48 @@ if (!successfullyHunted) {
     let nearestPlant = -1;
     let nearestDistance = HERBIVORE_FEED_RADIUS ** 2;
 
-    
-const nearbyPlantIndexes = querySpatialGrid(
-  plantGrid,
-  herbivore.x,
-  herbivore.y,
-  HERBIVORE_FEED_RADIUS,
-);
+    const nearbyPlantIndexes = querySpatialGrid(
+      plantGrid,
+      herbivore.x,
+      herbivore.y,
+      HERBIVORE_FEED_RADIUS,
+    );
 
-for (const j of nearbyPlantIndexes) {
-  const candidatePlant = plants[j];
+    for (const j of nearbyPlantIndexes) {
+      const candidatePlant = plants[j];
 
-  if (!candidatePlant || candidatePlant.biomass <= EPSILON) {
-    continue;
-  }
+      if (!candidatePlant || candidatePlant.biomass <= EPSILON) {
+        continue;
+      }
 
-  const distance = distanceSquared(
-    herbivore,
-    candidatePlant,
-    config.width,
-    config.height,
-  );
+      const distance = distanceSquared(
+        herbivore,
+        candidatePlant,
+        config.width,
+        config.height,
+      );
 
-  if (distance < nearestDistance) {
-    nearestDistance = distance;
-    nearestPlant = j;
-  }
-}
-
-
-  if (nearestPlant !== -1) {
-    const plant = plants[nearestPlant];
-
-    if (plant) {
-      const amount = Math.min(2.5, plant.biomass);
-
-      plant.biomass -= amount;
-      herbivore.energy += amount * 0.5;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestPlant = j;
+      }
     }
-  } else {
-    // Herbivores lose extra energy when no food is nearby.
-    herbivore.energy -= config.herbivoreStarvationRate;
-  }
 
-  herbivore.energy -= config.herbivoreMetabolism;
+    if (nearestPlant !== -1) {
+      const plant = plants[nearestPlant];
 
+      if (plant) {
+        const amount = Math.min(2.5, plant.biomass);
+
+        plant.biomass -= amount;
+        herbivore.energy += amount * 0.5;
+      }
+    } else {
+      // Herbivores lose extra energy when no food is nearby.
+      herbivore.energy -= config.herbivoreStarvationRate;
+    }
+
+    herbivore.energy -= config.herbivoreMetabolism;
 
     if (herbivore.energy > 0 && herbivore.ageTicks < MAX_AGE_TICKS) {
       survivingHerbivores.push(herbivore);
@@ -338,7 +371,6 @@ for (const j of nearbyPlantIndexes) {
       animal.energy >= config.predatorReproductionThreshold &&
       animal.reproductionCooldown === 0 &&
       predatorsThatHunted.has(animal.id)
-
     ) {
       const child = reproduce(animal, nextEntityId++, random);
       animal.energy /= 2;
@@ -351,11 +383,45 @@ for (const j of nearbyPlantIndexes) {
   const nextHerbivores = [...survivingHerbivores, ...newHerbivores];
   const nextPredators = [...survivingPredators, ...newPredators];
 
-  const environment = {
-    ...state.environment,
-    water: Math.max(0, state.environment.water - 0.01),
-    nutrients: Math.min(1000, state.environment.nutrients + 0.005),
-  };
+  const nextTick = state.tick + 1;
+
+  // 1. Calculate normal seasonal conditions.
+  const seasonalConditions = calculateEnvironmentalConditions(nextTick, config);
+
+  // 2. Generate the event active at this tick.
+  const environmentalEvent = getEnvironmentalEvent(nextTick, config);
+
+  // 3. Apply the event to seasonal conditions.
+  const environmentalConditions = applyEnvironmentalEvent(
+    seasonalConditions,
+    environmentalEvent,
+  );
+
+  // 4. Update water and nutrients using adjusted weather.
+  const weatherUpdatedEnvironment = updateEnvironment(
+    state.environment,
+    environmentalConditions,
+    config,
+  );
+
+const resourceConsumption = consumePlantResources(
+  weatherUpdatedEnvironment,
+  totalBiomassGained,
+  config,
+);
+
+// Decompose organic matter accumulated before this tick.
+const decomposedEnvironment = decomposeOrganicMatter(
+  resourceConsumption.environment,
+  config,
+);
+
+// Add newly dead plant biomass to the organic matter pool.
+// Newly added matter starts decomposing from the next tick.
+const environment = {
+  ...decomposedEnvironment,
+  organicMatter: decomposedEnvironment.organicMatter + deadBiomass,
+};
 
   return {
     tick: state.tick + 1,
@@ -366,10 +432,7 @@ for (const j of nearbyPlantIndexes) {
     herbivores: nextHerbivores,
     predators: nextPredators,
     metrics: {
-      plantBiomass: plants.reduce(
-        (total, plant) => total + plant.biomass,
-        0,
-      ),
+      plantBiomass: plants.reduce((total, plant) => total + plant.biomass, 0),
       herbivoreCount: nextHerbivores.length,
       predatorCount: nextPredators.length,
       availableResources: environment.water + environment.nutrients,
